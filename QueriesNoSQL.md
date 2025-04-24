@@ -8,6 +8,18 @@ A continuación se presentan 5 enunciados de consultas basados en las coleccione
 
 **Consulta MongoDB:**
 ```javascript
+db.clientes.aggregate([
+  { $unwind: "$cuentas" },
+  {
+    $group: {
+      _id: "$cuentas.tipo_cuenta",
+      saldo_total: { $sum: "$cuentas.saldo" },
+      saldo_promedio: { $avg: "$cuentas.saldo" },
+      saldo_maximo: { $max: "$cuentas.saldo" },
+      saldo_minimo: { $min: "$cuentas.saldo" }
+    }
+  }
+])
 ```
 
 ## 2. Patrones de Transacciones por Cliente
@@ -24,6 +36,23 @@ A continuación se presentan 5 enunciados de consultas basados en las coleccione
 
 **Consulta MongoDB:**
 ```javascript
+db.clientes.aggregate([
+  { $unwind: "$cuentas" },
+  { $unwind: "$cuentas.tarjetas" },
+  { $match: { "cuentas.tarjetas.tipo_tarjeta": "credito" } },
+  {
+    $group: {
+      _id: "$_id",
+      nombre: { $first: "$nombre" },
+      cedula: { $first: "$cedula" },
+      correo: { $first: "$correo" },
+      direccion: { $first: "$direccion" },
+      tarjetas_credito: { $push: "$cuentas.tarjetas" },
+      total_tarjetas_credito: { $sum: 1 }
+    }
+  },
+  { $match: { total_tarjetas_credito: { $gt: 1 } } }
+])
 ```
 
 ## 4. Análisis de Medios de Pago más Utilizados
@@ -32,6 +61,24 @@ A continuación se presentan 5 enunciados de consultas basados en las coleccione
 
 **Consulta MongoDB:**
 ```javascript
+db.transacciones.aggregate([
+  { $match: { tipo_transaccion: "deposito" } },
+  {
+    $addFields: {
+      mes: { $month: { $toDate: "$fecha" } },
+      anio: { $year: { $toDate: "$fecha" } }
+    }
+  },
+  {
+    $group: {
+      _id: { anio: "$anio", mes: "$mes", medio: "$detalles_deposito.medio_pago" },
+      cantidad: { $sum: 1 }
+    }
+  },
+  {
+    $sort: { "_id.anio": 1, "_id.mes": 1, cantidad: -1 }
+  }
+])
 ```
 
 ## 5. Detección de Cuentas con Transacciones Sospechosas
@@ -40,4 +87,27 @@ A continuación se presentan 5 enunciados de consultas basados en las coleccione
 
 **Consulta MongoDB:**
 ```javascript
+db.transacciones.aggregate([
+  { $match: { tipo_transaccion: "retiro" } },
+  {
+    $addFields: {
+      dia: {
+        $dateToString: { format: "%Y-%m-%d", date: { $toDate: "$fecha" } }
+      }
+    }
+  },
+  {
+    $group: {
+      _id: { cuenta: "$num_cuenta", dia: "$dia" },
+      total_monto: { $sum: "$monto" },
+      cantidad_retiros: { $sum: 1 }
+    }
+  },
+  {
+    $match: {
+      cantidad_retiros: { $gt: 3 },
+      total_monto: { $gt: 1000000 }
+    }
+  }
+])
 ```
